@@ -1728,73 +1728,162 @@ function loadTheme() {
 }
 
 // ── CRYPTO (AES-GCM, PBKDF2) ──
-async function deriveKey(password, salt) {
-  const enc=new TextEncoder();
-  const km=await crypto.subtle.importKey('raw',enc.encode(password),{name:'PBKDF2'},false,['deriveKey']);
-  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:200000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+// Fixed salt — same on every device, baked into the file
+const FIXED_SALT = Uint8Array.from(atob('iv7Y4W0Y+SPLkqtLEe/bJg=='), c => c.charCodeAt(0));
+
+async function deriveKey(password) {
+  const enc = new TextEncoder();
+  const km = await crypto.subtle.importKey('raw', enc.encode(password), {name:'PBKDF2'}, false, ['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2', salt:FIXED_SALT, iterations:200000, hash:'SHA-256'}, km, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
 }
 async function encryptText(text, key) {
-  const iv=crypto.getRandomValues(new Uint8Array(12));
-  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(text));
-  return btoa(String.fromCharCode(...iv))+':'+btoa(String.fromCharCode(...new Uint8Array(ct)));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, new TextEncoder().encode(text));
+  return btoa(String.fromCharCode(...iv)) + ':' + btoa(String.fromCharCode(...new Uint8Array(ct)));
 }
 async function decryptText(bundle, key) {
   try {
-    const [ivB64,ctB64]=bundle.split(':');
-    const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:Uint8Array.from(atob(ivB64),c=>c.charCodeAt(0))},key,Uint8Array.from(atob(ctB64),c=>c.charCodeAt(0)));
+    const [ivB64, ctB64] = bundle.split(':');
+    const plain = await crypto.subtle.decrypt({name:'AES-GCM', iv:Uint8Array.from(atob(ivB64), c=>c.charCodeAt(0))}, key, Uint8Array.from(atob(ctB64), c=>c.charCodeAt(0)));
     return new TextDecoder().decode(plain);
   } catch { return null; }
 }
-function getSalt() {
-  let s=localStorage.getItem(CRYPTO_SALT_KEY);
-  if(!s){ s=btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))); localStorage.setItem(CRYPTO_SALT_KEY,s); }
-  return Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+
+// ── VERIFY TOKEN — stored on JSONBin, shared across all devices ──
+// Only the device that set up JSONBin (local) can write the verify token.
+// All other devices read it from JSONBin and verify against it.
+
+function isLocalSetup() {
+  const h = window.location.hostname;
+  return h === 'localhost' || h === '127.0.0.1' || h === '' || window.location.protocol === 'file:';
 }
+
+async function getRemoteVerifyToken() {
+  const { apiKey, binId } = getJbConfig();
+  if (!apiKey || !binId) return null;
+  try {
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
+      headers: { 'X-Master-Key': apiKey }
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.record._adminVerify || null;
+  } catch { return null; }
+}
+
+async function setRemoteVerifyToken(token) {
+  const { apiKey, binId } = getJbConfig();
+  if (!apiKey || !binId) return false;
+  try {
+    // Read current bin content first
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
+      headers: { 'X-Master-Key': apiKey }
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const updated = { ...data.record, _adminVerify: token };
+    const putRes = await fetch(`https://api.jsonbin.io/v3/b/${binId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Master-Key': apiKey },
+      body: JSON.stringify(updated)
+    });
+    return putRes.ok;
+  } catch { return false; }
+}
+
 async function tryUnlock(password) {
-  const salt=getSalt(); const key=await deriveKey(password,salt);
-  const hasPw=localStorage.getItem(CRYPTO_PASS_SET_KEY);
-  if(!hasPw){
-    localStorage.setItem(CRYPTO_VERIFY_KEY,await encryptText('ohshinakai_admin_verify',key));
-    localStorage.setItem(CRYPTO_PASS_SET_KEY,'1');
-    _derivedKey=key; return true;
+  const key = await deriveKey(password);
+
+  // ── SETUP PATH (local only) ──
+  // Only allowed when running from file:// or localhost AND no token exists yet
+  if (isLocalSetup()) {
+    // Check if token already exists remotely
+    const existingToken = jbConfigured() ? await getRemoteVerifyToken() : null;
+    if (!existingToken) {
+      // First time setup — encrypt and store on JSONBin
+      const token = await encryptText('ohshinakai_admin_verify', key);
+      if (jbConfigured()) {
+        const saved = await setRemoteVerifyToken(token);
+        if (!saved) return 'jb_error';
+      }
+      // Also cache locally for offline use
+      localStorage.setItem(CRYPTO_VERIFY_KEY, token);
+      _derivedKey = key;
+      return true;
+    }
   }
-  const result=await decryptText(localStorage.getItem(CRYPTO_VERIFY_KEY),key);
-  if(result==='ohshinakai_admin_verify'){ _derivedKey=key; return true; }
+
+  // ── VERIFY PATH (all devices) ──
+  // Try remote token first, fall back to local cache
+  let token = null;
+  if (jbConfigured()) {
+    token = await getRemoteVerifyToken();
+  }
+  // Fall back to locally cached token if remote unavailable
+  if (!token) token = localStorage.getItem(CRYPTO_VERIFY_KEY);
+  if (!token) return false;
+
+  // Cache the remote token locally for offline fallback
+  if (token) localStorage.setItem(CRYPTO_VERIFY_KEY, token);
+
+  const result = await decryptText(token, key);
+  if (result === 'ohshinakai_admin_verify') { _derivedKey = key; return true; }
   return false;
 }
+
 async function decryptCommissionPrivate(c) {
-  if(!_derivedKey||!c._enc) return c;
-  const plain=await decryptText(c._enc,_derivedKey);
-  if(!plain) return c;
-  const p=JSON.parse(plain);
-  return {...c,notes:p.notes||'',checks:p.checks||[],customChecks:p.customChecks||[],checkOrder:p.checkOrder||[]};
+  if (!_derivedKey || !c._enc) return c;
+  const plain = await decryptText(c._enc, _derivedKey);
+  if (!plain) return c;
+  const p = JSON.parse(plain);
+  return { ...c, notes:p.notes||'', checks:p.checks||[], customChecks:p.customChecks||[], checkOrder:p.checkOrder||[] };
 }
 
 // ── ADMIN ──
 function handleLockClick() { if(adminMode) lockAdmin(); else openPwModal(); }
 
 function openPwModal() {
-  const hasPw=localStorage.getItem(CRYPTO_PASS_SET_KEY);
-  document.getElementById('pwSetupNote').style.display=hasPw?'none':'block';
-  document.getElementById('pwModalTitle').textContent=hasPw?'Restricted':'Set Password';
-  document.getElementById('pwSubmitBtn').textContent=hasPw?'Unlock':'Set Password';
-  document.getElementById('pwModalDesc').textContent=hasPw?'Verify password to unlock management tools.':'Choose a permanent admin password.';
-  document.getElementById('pwInput').value='';
-  document.getElementById('pwError').textContent='';
+  const isLocal = isLocalSetup();
+  document.getElementById('pwInput').value = '';
+  document.getElementById('pwError').textContent = '';
+
+  if (!isLocal && !jbConfigured()) {
+    // Public visitor, no JSONBin configured — can't verify anything
+    document.getElementById('pwModalTitle').textContent = 'Admin Unavailable';
+    document.getElementById('pwModalDesc').textContent = 'Admin access must be configured locally first.';
+    document.getElementById('pwSetupNote').style.display = 'none';
+    document.getElementById('pwSubmitBtn').style.display = 'none';
+  } else {
+    document.getElementById('pwModalTitle').textContent = 'Admin Access';
+    document.getElementById('pwModalDesc').textContent = 'Enter your admin password to unlock.';
+    document.getElementById('pwSetupNote').style.display = 'none';
+    document.getElementById('pwSubmitBtn').style.display = '';
+    document.getElementById('pwSubmitBtn').textContent = 'Unlock';
+  }
   document.getElementById('pwModal').classList.add('open');
-  setTimeout(()=>document.getElementById('pwInput').focus(),80);
+  setTimeout(() => document.getElementById('pwInput').focus(), 80);
 }
+
 function closePwModal() { document.getElementById('pwModal').classList.remove('open'); }
 
 async function submitPassword() {
-  const pw=document.getElementById('pwInput').value; if(!pw) return;
-  document.getElementById('pwSubmitBtn').textContent='...';
-  document.getElementById('pwSubmitBtn').disabled=true;
-  const ok=await tryUnlock(pw);
-  document.getElementById('pwSubmitBtn').disabled=false;
-  document.getElementById('pwSubmitBtn').textContent='Unlock';
-  if(ok){ closePwModal(); await enterAdminMode(); }
-  else { document.getElementById('pwError').textContent='INVALID PASSWORD'; document.getElementById('pwInput').value=''; }
+  const pw = document.getElementById('pwInput').value; if (!pw) return;
+  document.getElementById('pwSubmitBtn').textContent = '...';
+  document.getElementById('pwSubmitBtn').disabled = true;
+
+  const result = await tryUnlock(pw);
+
+  document.getElementById('pwSubmitBtn').disabled = false;
+  document.getElementById('pwSubmitBtn').textContent = 'Unlock';
+
+  if (result === true) {
+    closePwModal(); await enterAdminMode();
+  } else if (result === 'jb_error') {
+    document.getElementById('pwError').textContent = 'JSONBIN NOT CONFIGURED — SET UP JSONBIN FIRST';
+  } else {
+    document.getElementById('pwError').textContent = 'INVALID PASSWORD';
+    document.getElementById('pwInput').value = '';
+  }
 }
 
 async function enterAdminMode() {
