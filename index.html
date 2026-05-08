@@ -2040,17 +2040,19 @@
       if (!binId) return null;
       try {
         setSyncStatus('syncing', 'Fetching…');
-        // Public read — no API key needed (bin must be set to Public on jsonbin.io)
         const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
           headers: { 'X-Bin-Meta': 'false' }
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         setSyncStatus('ok', 'Synced');
-        return data.record;
+        // JSONBin v3 wraps in { record: {...} } — handle both shapes defensively
+        const record = (data && data.record !== undefined) ? data.record : data;
+        console.log('[CT] fetchFromJb keys:', record ? Object.keys(record) : 'null');
+        return record;
       } catch (e) {
         setSyncStatus('err', 'Fetch failed');
-        console.error('JSONBin fetch:', e);
+        console.error('[CT] JSONBin fetch error:', e);
         return null;
       }
     }
@@ -2161,12 +2163,15 @@
     }
 
     async function loadData() {
-      // Try JSONBin first — always fresh for public visitors
-      // Only needs the public bin ID, no API key required for reads
-      if (getPublicBinId()) {
+      const binId = getPublicBinId();
+      console.log('[CT] Bin ID:', binId || 'NOT SET');
+
+      if (binId) {
         const remote = await fetchFromJb();
+        console.log('[CT] Remote fetch result:', remote ? 'ok' : 'null');
         if (remote && Array.isArray(remote.commissions)) {
-          // Merge public remote data with private local data (notes, checks, _enc)
+          console.log('[CT] Loaded', remote.commissions.length, 'commissions from JSONBin');
+          // Merge: remote = public fields, local = private fields (notes, checks, _enc)
           const localRaw = localStorage.getItem(STORAGE_KEY);
           const localData = localRaw ? JSON.parse(localRaw) : null;
           const localMap = {};
@@ -2175,13 +2180,23 @@
           }
           commissions = remote.commissions.map(rc => {
             const lc = localMap[rc.id] || {};
-            return { ...rc, checks: lc.checks || [], customChecks: lc.customChecks || [], notes: lc.notes || '', checkOrder: lc.checkOrder || [], _enc: lc._enc || '' };
+            return { ...rc,
+              checks: lc.checks||[], customChecks: lc.customChecks||[],
+              notes: lc.notes||'', checkOrder: lc.checkOrder||[], _enc: lc._enc||''
+            };
           });
-          nextId = remote.nextId || (Math.max(...commissions.map(c => c.id), 0) + 1);
-          return;
+          nextId = remote.nextId || (Math.max(0, ...commissions.map(c => c.id)) + 1);
+          return; // always return — never fall through to stale localStorage
         }
+        // Bin is configured but fetch failed (network error etc)
+        console.warn('[CT] JSONBin fetch failed — showing empty state');
+        commissions = [];
+        nextId = 208;
+        return;
       }
-      // Fallback: localStorage
+
+      // No bin ID — local-only mode, use localStorage
+      console.log('[CT] No bin ID, using localStorage');
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const p = JSON.parse(saved);
