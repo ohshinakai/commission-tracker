@@ -1614,6 +1614,15 @@
           </select>
         </div>
         <div class="form-field">
+          <label class="form-label">Contact</label>
+          <select id="d_contact">
+            <option>Discord</option>
+            <option>DeviantArt</option>
+            <option>Email</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="form-field">
           <label class="form-label">Payment</label>
           <select id="d_payment">
             <option value="Yes">Yes — Paid</option>
@@ -1701,6 +1710,15 @@
             <option>In progress</option>
             <option>Payment recieved</option>
             <option>Invoice sent</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Contact</label>
+          <select id="a_contact">
+            <option>Discord</option>
+            <option>DeviantArt</option>
+            <option>Email</option>
+            <option>Other</option>
           </select>
         </div>
         <div class="form-field">
@@ -2398,6 +2416,7 @@
       document.getElementById('d_username').value = c.username || '';
       document.getElementById('d_type').value = c.type;
       document.getElementById('d_status').value = c.status;
+      document.getElementById('d_contact').value = c.contact || 'Discord';
       document.getElementById('d_payment').value = c.payment;
       document.getElementById('d_due').value = c.due || '';
       document.getElementById('d_franchise').value = c.franchise || '';
@@ -2419,6 +2438,7 @@
       c.username = document.getElementById('d_username').value.trim();
       c.type = document.getElementById('d_type').value;
       c.status = document.getElementById('d_status').value;
+      c.contact = document.getElementById('d_contact').value;
       c.payment = document.getElementById('d_payment').value;
       c.due = document.getElementById('d_due').value;
       c.imageUrl = document.getElementById('d_img_url').value.trim();
@@ -2487,7 +2507,7 @@
     function openAddModal() { document.getElementById('addModal').classList.add('open'); }
     function closeAdd() {
       document.getElementById('addModal').classList.remove('open');
-      ['a_name', 'a_username', 'a_due', 'a_franchise', 'a_race', 'a_img_url'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      ['a_name', 'a_username', 'a_due', 'a_franchise', 'a_race', 'a_img_url', 'a_contact'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       clearImg('a');;
     }
     function addCommission() {
@@ -2495,6 +2515,7 @@
       commissions.push({
         id: nextId++, name, username: document.getElementById('a_username').value.trim(),
         type: document.getElementById('a_type').value, status: document.getElementById('a_status').value,
+        contact: document.getElementById('a_contact').value,
         payment: 'No', due: document.getElementById('a_due').value,
         imageUrl: document.getElementById('a_img_url').value.trim(),
         franchise: document.getElementById('a_franchise').value.trim(),
@@ -2768,8 +2789,25 @@
     document.getElementById('trackerName').addEventListener('click', () => { if (adminMode) startEditName(); });
 
     // ── IMAGE PREVIEW FUNCTIONS ──
+    function normaliseImgUrl(url) {
+      if (!url) return url;
+      // Imgur page URL → direct image URL
+      // https://imgur.com/AbCdEfG  →  https://i.imgur.com/AbCdEfG.jpg
+      const imgurPage = url.match(/^https?:\/\/(?:www\.)?imgur\.com\/([A-Za-z0-9]+)(?:\?.*)?$/);
+      if (imgurPage) return `https://i.imgur.com/${imgurPage[1]}.jpg`;
+      // imgur gallery link: https://imgur.com/gallery/AbCdEfG
+      const imgurGallery = url.match(/^https?:\/\/(?:www\.)?imgur\.com\/gallery\/([A-Za-z0-9]+)/);
+      if (imgurGallery) return `https://i.imgur.com/${imgurGallery[1]}.jpg`;
+      return url;
+    }
+
     function updateImgPreview(prefix, urlOverride) {
-      const url = urlOverride !== undefined ? urlOverride : document.getElementById(prefix + '_img_url').value.trim();
+      const raw = urlOverride !== undefined ? urlOverride : document.getElementById(prefix + '_img_url').value.trim();
+      const url = normaliseImgUrl(raw);
+      // Update the input field if we normalised the URL
+      if (url !== raw && raw) {
+        document.getElementById(prefix + '_img_url').value = url;
+      }
       const thumb = document.getElementById(prefix + '_img_preview');
       const clearBtn = document.getElementById(prefix + '_img_clear');
       if (url) {
