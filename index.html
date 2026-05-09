@@ -603,29 +603,18 @@
       letter-spacing: 0.08em;
       font-weight: 700;
       padding: 3px 8px;
-      border: 1px solid currentColor;
+      border: 1px solid transparent;
       display: inline-block;
+      color: #ffffff;
     }
 
-    .status-Done {
-      color: var(--ink);
-    }
+    .status-Done             { background: var(--green); border-color: var(--green); }
+    .status-In-progress      { background: var(--blue);  border-color: var(--blue); }
+    .status-Payment-recieved { background: var(--amber); border-color: var(--amber); }
+    .status-Not-started      { background: var(--red);   border-color: var(--red); }
+    .status-Invoice-sent     { background: var(--gray);  border-color: var(--gray); }
 
-    .status-In-progress {
-      color: var(--blue);
-    }
-
-    .status-Payment-recieved {
-      color: var(--amber);
-    }
-
-    .status-Not-started {
-      color: var(--gray);
-    }
-
-    .status-Invoice-sent {
-      color: var(--gray);
-    }
+    body.dark .status-badge  { color: #ffffff; }
 
     .paid-yes {
       font-family: 'Space Mono', monospace;
@@ -655,16 +644,10 @@
       text-decoration: underline;
     }
 
-    .notes-dot {
-      color: var(--blue);
-      font-size: 14px;
-    }
-
     /* Hide admin cols publicly */
     body:not(.admin-mode) .col-contact,
     body:not(.admin-mode) .col-username,
-    body:not(.admin-mode) .col-notes,
-    body:not(.admin-mode) .admin-only {
+      body:not(.admin-mode) .admin-only {
       display: none !important;
     }
 
@@ -1565,7 +1548,7 @@
           <th onclick="sortBy('race')">Race<span class="sort-icon">↕</span></th>
           <th onclick="sortBy('payment')">Paid<span class="sort-icon">↕</span></th>
           <th onclick="sortBy('due')">Due Date<span class="sort-icon">↕</span></th>
-          <th class="col-notes">Notes</th>
+  
         </tr>
       </thead>
       <tbody id="tableBody"></tbody>
@@ -2308,8 +2291,7 @@
           const overdue = d < today && !isDone;
           dueTd = `<span class="due-date${overdue ? ' due-overdue' : ''}">${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>`;
         }
-        const hasNotes = c.notes || (c.checks && c.checks.length);
-
+    
         const tr = document.createElement('tr');
         if (isDone) tr.classList.add('done-row');
         tr.innerHTML = `
@@ -2324,8 +2306,7 @@
       <td style="font-family:'Work Sans',sans-serif;font-size:13px;">${c.franchise || '<span style="color:var(--dim)">—</span>'}</td>
       <td style="font-family:'Work Sans',sans-serif;font-size:13px;">${c.race || '<span style="color:var(--dim)">—</span>'}</td>
       <td class="${c.payment === 'Yes' ? 'paid-yes' : 'paid-no'}">${c.payment === 'Yes' ? 'YES' : 'NO'}</td>
-      <td>${dueTd}</td>
-      <td class="col-notes">${hasNotes ? '<span class="notes-dot">✦</span>' : ''}</td>`;
+      <td>${dueTd}</td>`;
         tr.onclick = () => { if (!adminMode) { showToast('Admin access required'); return; } openDetail(c.id); };
         tbody.appendChild(tr);
       });
