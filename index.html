@@ -1785,6 +1785,9 @@
         <button class="btn" onclick="closePwModal()">Cancel</button>
         <button class="btn primary" id="pwSubmitBtn" onclick="submitPassword()">Unlock</button>
       </div>
+      <div style="margin-top:12px;text-align:center;">
+        <button class="btn danger" id="pwResetBtn" onclick="resetAdminToken()" style="display:none;font-size:9px;padding:5px 12px;">↺ Reset Admin Password</button>
+      </div>
     </div>
   </div>
 
@@ -2712,6 +2715,40 @@
     }
 
     // ── ADMIN ──
+    async function resetAdminToken() {
+      const pw = document.getElementById('pwInput').value.trim();
+      if (!pw) {
+        document.getElementById('pwError').textContent = 'ENTER YOUR NEW PASSWORD FIRST';
+        return;
+      }
+      if (!confirm('This will replace your admin password with the one entered above.\n\nMake sure JSONBin is configured. Continue?')) return;
+
+      if (!jbConfigured()) {
+        document.getElementById('pwError').textContent = 'JSONBIN NOT CONFIGURED — SET UP JSONBIN FIRST';
+        return;
+      }
+
+      document.getElementById('pwResetBtn').textContent = '...';
+      document.getElementById('pwResetBtn').disabled = true;
+
+      const key = await deriveKey(pw);
+      const token = await encryptText('ohshinakai_admin_verify', key);
+      const saved = await setRemoteVerifyToken(token);
+
+      document.getElementById('pwResetBtn').disabled = false;
+      document.getElementById('pwResetBtn').textContent = '↺ Reset Admin Password';
+
+      if (saved) {
+        localStorage.setItem(CRYPTO_VERIFY_KEY, token);
+        _derivedKey = key;
+        closePwModal();
+        await enterAdminMode();
+        showToast('Admin password reset & unlocked ✓');
+      } else {
+        document.getElementById('pwError').textContent = 'RESET FAILED — CHECK JSONBIN CONFIG';
+      }
+    }
+
     async function handleLockClick() { if (adminMode) lockAdmin(); else await openPwModal(); }
 
     async function openPwModal() {
@@ -2740,11 +2777,12 @@
         document.getElementById('pwSubmitBtn').style.display = '';
         document.getElementById('pwSubmitBtn').textContent = 'Set Password';
       } else if (setupMode && remoteToken) {
-        // Setup secret correct but token already exists — normal login
+        // Setup secret correct but token already exists — offer unlock OR reset
         document.getElementById('pwModalTitle').textContent = 'Admin Access';
-        document.getElementById('pwModalDesc').textContent = 'Password already configured. Enter it to unlock.';
+        document.getElementById('pwModalDesc').textContent = 'Enter your password to unlock, or reset it if you have forgotten it.';
         document.getElementById('pwSubmitBtn').style.display = '';
         document.getElementById('pwSubmitBtn').textContent = 'Unlock';
+        document.getElementById('pwResetBtn').style.display = '';
       } else if (!remoteToken) {
         // No token, no valid setup secret — locked out
         document.getElementById('pwModalTitle').textContent = 'Admin Unavailable';
