@@ -608,13 +608,34 @@
       color: #ffffff;
     }
 
-    .status-Done             { background: var(--green); border-color: var(--green); }
-    .status-In-progress      { background: var(--blue);  border-color: var(--blue); }
-    .status-Payment-recieved { background: var(--amber); border-color: var(--amber); }
-    .status-Not-started      { background: var(--red);   border-color: var(--red); }
-    .status-Invoice-sent     { background: var(--gray);  border-color: var(--gray); }
+    .status-Done {
+      background: var(--green);
+      border-color: var(--green);
+    }
 
-    body.dark .status-badge  { color: #ffffff; }
+    .status-In-progress {
+      background: var(--blue);
+      border-color: var(--blue);
+    }
+
+    .status-Payment-recieved {
+      background: var(--amber);
+      border-color: var(--amber);
+    }
+
+    .status-Not-started {
+      background: var(--red);
+      border-color: var(--red);
+    }
+
+    .status-Invoice-sent {
+      background: var(--gray);
+      border-color: var(--gray);
+    }
+
+    body.dark .status-badge {
+      color: #ffffff;
+    }
 
     .paid-yes {
       font-family: 'Space Mono', monospace;
@@ -647,7 +668,7 @@
     /* Hide admin cols publicly */
     body:not(.admin-mode) .col-contact,
     body:not(.admin-mode) .col-username,
-      body:not(.admin-mode) .admin-only {
+    body:not(.admin-mode) .admin-only {
       display: none !important;
     }
 
@@ -1559,7 +1580,7 @@
           <th onclick="sortBy('race')">Race<span class="sort-icon">↕</span></th>
           <th onclick="sortBy('payment')">Paid<span class="sort-icon">↕</span></th>
           <th onclick="sortBy('due')">Due Date<span class="sort-icon">↕</span></th>
-  
+
         </tr>
       </thead>
       <tbody id="tableBody"></tbody>
@@ -2192,9 +2213,10 @@
           }
           commissions = remote.commissions.map(rc => {
             const lc = localMap[rc.id] || {};
-            return { ...rc,
-              checks: lc.checks||[], customChecks: lc.customChecks||[],
-              notes: lc.notes||'', checkOrder: lc.checkOrder||[], _enc: lc._enc||''
+            return {
+              ...rc,
+              checks: lc.checks || [], customChecks: lc.customChecks || [],
+              notes: lc.notes || '', checkOrder: lc.checkOrder || [], _enc: lc._enc || ''
             };
           });
           nextId = remote.nextId || (Math.max(0, ...commissions.map(c => c.id)) + 1);
@@ -2302,7 +2324,7 @@
           const overdue = d < today && !isDone;
           dueTd = `<span class="due-date${overdue ? ' due-overdue' : ''}">${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>`;
         }
-    
+
         const tr = document.createElement('tr');
         if (isDone) tr.classList.add('done-row');
         tr.innerHTML = `
@@ -2593,17 +2615,11 @@
     // Only the device that set up JSONBin (local) can write the verify token.
     // All other devices read it from JSONBin and verify against it.
 
-    // ── SETUP SECRET ──
-    // The setup path is only available when ?setup=YOUR_SECRET is in the URL.
-    // This secret is checked against a SHA-256 hash baked into the file.
-    // Change SETUP_SECRET_HASH to the SHA-256 of your chosen secret phrase.
-    // To generate: https://emn178.github.io/online-tools/sha256.html
-    // Default secret below hashes to: "ohshinakai-setup-2026"
-    const SETUP_SECRET_HASH = 'b9f4566a7d3f84ad3126d05e50ed94bad7e44e0f5e3fc40eb70b02a18e3ab3c4';
+    const SETUP_SECRET_HASH = 'da46ad5791ad4a6e30d8ed2cba83d8f1535006341be068f777e137b112554f18';
 
     async function sha256(message) {
       const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(message));
-      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
     async function isSetupMode() {
