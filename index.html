@@ -1409,20 +1409,31 @@
 
     /* ── SCROLLBAR ── */
     ::-webkit-scrollbar {
-      width: 4px;
-      height: 4px;
+      width: 10px;
+      height: 10px;
     }
 
     ::-webkit-scrollbar-track {
-      background: transparent;
+      background: var(--hairline);
     }
 
     ::-webkit-scrollbar-thumb {
-      background: #ccc;
+      background: #aaaaaa;
+      border-radius: 5px;
+      border: 2px solid var(--bg);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #777777;
     }
 
     body.dark ::-webkit-scrollbar-thumb {
-      background: #444;
+      background: #555555;
+      border-color: var(--bg);
+    }
+
+    body.dark ::-webkit-scrollbar-thumb:hover {
+      background: #888888;
     }
 
     /* ── IMPORT LABEL ── */
