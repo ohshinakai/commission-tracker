@@ -608,13 +608,34 @@
       color: #ffffff;
     }
 
-    .status-Done             { background: var(--green); border-color: var(--green); }
-    .status-In-progress      { background: var(--blue);  border-color: var(--blue); }
-    .status-Payment-recieved { background: var(--amber); border-color: var(--amber); }
-    .status-Not-started      { background: var(--red);   border-color: var(--red); }
-    .status-Invoice-sent     { background: var(--gray);  border-color: var(--gray); }
+    .status-Done {
+      background: var(--green);
+      border-color: var(--green);
+    }
 
-    body.dark .status-badge  { color: #ffffff; }
+    .status-In-progress {
+      background: var(--blue);
+      border-color: var(--blue);
+    }
+
+    .status-Payment-recieved {
+      background: var(--amber);
+      border-color: var(--amber);
+    }
+
+    .status-Not-started {
+      background: var(--red);
+      border-color: var(--red);
+    }
+
+    .status-Invoice-sent {
+      background: var(--gray);
+      border-color: var(--gray);
+    }
+
+    body.dark .status-badge {
+      color: #ffffff;
+    }
 
     .paid-yes {
       font-family: 'Space Mono', monospace;
@@ -647,7 +668,7 @@
     /* Hide admin cols publicly */
     body:not(.admin-mode) .col-contact,
     body:not(.admin-mode) .col-username,
-      body:not(.admin-mode) .admin-only {
+    body:not(.admin-mode) .admin-only {
       display: none !important;
     }
 
@@ -1559,7 +1580,7 @@
           <th onclick="sortBy('race')">Race<span class="sort-icon">↕</span></th>
           <th onclick="sortBy('payment')">Paid<span class="sort-icon">↕</span></th>
           <th onclick="sortBy('due')">Due Date<span class="sort-icon">↕</span></th>
-  
+
         </tr>
       </thead>
       <tbody id="tableBody"></tbody>
@@ -2192,9 +2213,10 @@
           }
           commissions = remote.commissions.map(rc => {
             const lc = localMap[rc.id] || {};
-            return { ...rc,
-              checks: lc.checks||[], customChecks: lc.customChecks||[],
-              notes: lc.notes||'', checkOrder: lc.checkOrder||[], _enc: lc._enc||''
+            return {
+              ...rc,
+              checks: lc.checks || [], customChecks: lc.customChecks || [],
+              notes: lc.notes || '', checkOrder: lc.checkOrder || [], _enc: lc._enc || ''
             };
           });
           nextId = remote.nextId || (Math.max(0, ...commissions.map(c => c.id)) + 1);
@@ -2302,7 +2324,7 @@
           const overdue = d < today && !isDone;
           dueTd = `<span class="due-date${overdue ? ' due-overdue' : ''}">${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>`;
         }
-    
+
         const tr = document.createElement('tr');
         if (isDone) tr.classList.add('done-row');
         tr.innerHTML = `
@@ -2593,22 +2615,31 @@
     // Only the device that set up JSONBin (local) can write the verify token.
     // All other devices read it from JSONBin and verify against it.
 
-    function isLocalSetup() {
-      const h = window.location.hostname;
-      return h === 'localhost' || h === '127.0.0.1' || h === '' || window.location.protocol === 'file:';
+    const SETUP_SECRET_HASH = 'da46ad5791ad4a6e30d8ed2cba83d8f1535006341be068f777e137b112554f18';
+
+    async function sha256(message) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(message));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function isSetupMode() {
+      const param = new URLSearchParams(window.location.search).get('setup');
+      if (!param) return false;
+      const hash = await sha256(param);
+      return hash === SETUP_SECRET_HASH;
     }
 
     async function getRemoteVerifyToken() {
       const binId = getPublicBinId();
       if (!binId) return null;
       try {
-        // Use keyless public read — bin must be set to Public on jsonbin.io
         const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
           headers: { 'X-Bin-Meta': 'false' }
         });
         if (!res.ok) return null;
         const data = await res.json();
-        return data.record._adminVerify || null;
+        const record = (data && data.record !== undefined) ? data.record : data;
+        return record._adminVerify || null;
       } catch { return null; }
     }
 
@@ -2616,13 +2647,13 @@
       const { apiKey, binId } = getJbConfig();
       if (!apiKey || !binId) return false;
       try {
-        // Read current bin content first
         const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
           headers: { 'X-Master-Key': apiKey }
         });
         if (!res.ok) return false;
         const data = await res.json();
-        const updated = { ...data.record, _adminVerify: token };
+        const record = (data && data.record !== undefined) ? data.record : data;
+        const updated = { ...record, _adminVerify: token };
         const putRes = await fetch(`https://api.jsonbin.io/v3/b/${binId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'X-Master-Key': apiKey },
@@ -2635,39 +2666,35 @@
     async function tryUnlock(password) {
       const key = await deriveKey(password);
 
-      // ── SETUP PATH (local only) ──
-      // Only allowed when running from file:// or localhost AND no token exists yet
-      if (isLocalSetup()) {
-        // Check if token already exists remotely
-        const existingToken = jbConfigured() ? await getRemoteVerifyToken() : null;
-        if (!existingToken) {
-          // First time setup — encrypt and store on JSONBin
-          const token = await encryptText('ohshinakai_admin_verify', key);
-          if (jbConfigured()) {
-            const saved = await setRemoteVerifyToken(token);
-            if (!saved) return 'jb_error';
-          }
-          // Also cache locally for offline use
-          localStorage.setItem(CRYPTO_VERIFY_KEY, token);
-          _derivedKey = key;
-          return true;
+      // ── SETUP PATH — only if ?setup=SECRET matches the baked-in hash ──
+      if (await isSetupMode()) {
+        const existingToken = await getRemoteVerifyToken();
+        if (existingToken) {
+          // Token already exists — treat as normal verify, ignore setup param
+          const result = await decryptText(existingToken, key);
+          if (result === 'ohshinakai_admin_verify') { _derivedKey = key; return true; }
+          return false;
         }
+        if (!jbConfigured()) return 'jb_error';
+        // First-time setup: create and store the verify token
+        const token = await encryptText('ohshinakai_admin_verify', key);
+        const saved = await setRemoteVerifyToken(token);
+        if (!saved) return 'jb_error';
+        localStorage.setItem(CRYPTO_VERIFY_KEY, token);
+        _derivedKey = key;
+        return true;
       }
 
-      // ── VERIFY PATH (all devices) ──
-      // Try remote token first, fall back to local cache
-      let token = null;
-      if (jbConfigured()) {
-        token = await getRemoteVerifyToken();
+      // ── VERIFY PATH — all other cases ──
+      // Must have a token in JSONBin; no token = no access, period.
+      const remoteToken = await getRemoteVerifyToken();
+      if (!remoteToken) {
+        // No token on JSONBin — admin not set up, refuse all access
+        return 'not_configured';
       }
-      // Fall back to locally cached token if remote unavailable
-      if (!token) token = localStorage.getItem(CRYPTO_VERIFY_KEY);
-      if (!token) return false;
-
-      // Cache the remote token locally for offline fallback
-      if (token) localStorage.setItem(CRYPTO_VERIFY_KEY, token);
-
-      const result = await decryptText(token, key);
+      // Cache locally for offline fallback
+      localStorage.setItem(CRYPTO_VERIFY_KEY, remoteToken);
+      const result = await decryptText(remoteToken, key);
       if (result === 'ohshinakai_admin_verify') { _derivedKey = key; return true; }
       return false;
     }
@@ -2683,23 +2710,31 @@
     // ── ADMIN ──
     function handleLockClick() { if (adminMode) lockAdmin(); else openPwModal(); }
 
-    function openPwModal() {
-      const isLocal = isLocalSetup();
+    async function openPwModal() {
       document.getElementById('pwInput').value = '';
       document.getElementById('pwError').textContent = '';
+      document.getElementById('pwSubmitBtn').style.display = '';
+      document.getElementById('pwSubmitBtn').textContent = 'Unlock';
+      document.getElementById('pwSetupNote').style.display = 'none';
 
-      if (!isLocal && !jbConfigured()) {
-        // Public visitor, no JSONBin configured — can't verify anything
+      const setupMode = await isSetupMode();
+      const remoteToken = await getRemoteVerifyToken();
+
+      if (setupMode && !remoteToken) {
+        // First-time setup via secret URL
+        document.getElementById('pwModalTitle').textContent = 'Set Admin Password';
+        document.getElementById('pwModalDesc').textContent = 'Choose your admin password. Store it safely — it cannot be recovered.';
+        document.getElementById('pwSetupNote').style.display = 'block';
+        document.getElementById('pwSubmitBtn').textContent = 'Set Password';
+      } else if (!remoteToken) {
+        // No token, no setup secret — completely locked out
         document.getElementById('pwModalTitle').textContent = 'Admin Unavailable';
-        document.getElementById('pwModalDesc').textContent = 'Admin access must be configured locally first.';
-        document.getElementById('pwSetupNote').style.display = 'none';
+        document.getElementById('pwModalDesc').textContent = 'Admin access has not been configured yet.';
         document.getElementById('pwSubmitBtn').style.display = 'none';
       } else {
+        // Normal unlock
         document.getElementById('pwModalTitle').textContent = 'Admin Access';
         document.getElementById('pwModalDesc').textContent = 'Enter your admin password to unlock.';
-        document.getElementById('pwSetupNote').style.display = 'none';
-        document.getElementById('pwSubmitBtn').style.display = '';
-        document.getElementById('pwSubmitBtn').textContent = 'Unlock';
       }
       document.getElementById('pwModal').classList.add('open');
       setTimeout(() => document.getElementById('pwInput').focus(), 80);
@@ -2721,6 +2756,9 @@
         closePwModal(); await enterAdminMode();
       } else if (result === 'jb_error') {
         document.getElementById('pwError').textContent = 'JSONBIN NOT CONFIGURED — SET UP JSONBIN FIRST';
+      } else if (result === 'not_configured') {
+        document.getElementById('pwError').textContent = 'ADMIN NOT CONFIGURED';
+        document.getElementById('pwSubmitBtn').style.display = 'none';
       } else {
         document.getElementById('pwError').textContent = 'INVALID PASSWORD';
         document.getElementById('pwInput').value = '';
