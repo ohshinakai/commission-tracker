@@ -2626,6 +2626,10 @@
       const param = new URLSearchParams(window.location.search).get('setup');
       if (!param) return false;
       const hash = await sha256(param);
+      console.log('[CT] isSetupMode param:', param);
+      console.log('[CT] isSetupMode computed hash:', hash);
+      console.log('[CT] isSetupMode expected hash:', SETUP_SECRET_HASH);
+      console.log('[CT] isSetupMode match:', hash === SETUP_SECRET_HASH);
       return hash === SETUP_SECRET_HASH;
     }
 
