@@ -3,11 +3,6 @@
 A single-file HTML commission tracker built for artists and creators. Track the status of your commissions publicly while keeping client notes, checklists, and private details encrypted and admin-only. Live data syncs across all browsers via JSONBin.
 
 **Built by [ohshinakai](https://ohshinakai.github.io)**
-# Commission Tracker
-
-A single-file HTML commission tracker built for artists and creators. Track the status of your commissions publicly while keeping client notes, checklists, and private details encrypted and admin-only. Live data syncs across all browsers via JSONBin.
-
-**Built by [ohshinakai](https://ohshinakai.github.io)**
 
 ---
 
