@@ -1785,6 +1785,9 @@
         <button class="btn" onclick="closePwModal()">Cancel</button>
         <button class="btn primary" id="pwSubmitBtn" onclick="submitPassword()">Unlock</button>
       </div>
+      <div style="margin-top:10px;text-align:center;">
+        <button class="btn" id="pwJbSetupBtn" onclick="openJbFromPwModal()" style="font-size:9px;padding:5px 14px;display:none;">⚙ Configure JSONBin First</button>
+      </div>
       <div id="pwResetWrap" style="display:none;margin-top:16px;border-top:1px solid var(--hairline);padding-top:14px;">
         <div class="pw-eyebrow" style="margin-bottom:8px;">Reset Password</div>
         <input class="pw-input" type="password" id="pwCurrentInput" placeholder="Current password" autocomplete="off" style="margin-bottom:8px;letter-spacing:0.2em;font-size:14px;">
@@ -2067,7 +2070,7 @@
     // Set this once after configuring JSONBin, then re-upload to GitHub Pages.
     // This allows ANY visitor (fresh browser, no localStorage) to read your data.
     // Leave empty ('') if not yet configured.
-    const BAKED_BIN_ID = '69fe0560250b1311c320f330';
+    const BAKED_BIN_ID = ''; // Add your JSONBin Bin ID here after setup
 
     function getPublicBinId() {
       // Priority: 1) baked-in constant, 2) localStorage from prior admin setup
@@ -2124,7 +2127,9 @@
       }));
       return { commissions: publicComms, nextId, updatedAt: new Date().toISOString() };
     }
-    function openJbModal() {
+    let _jbReopenPw = false;
+    function openJbModal(reopenPw) {
+      _jbReopenPw = !!reopenPw;
       const { apiKey, binId } = getJbConfig();
       document.getElementById('jb_api_key').value = apiKey ? '••••••••••••' : '';
       document.getElementById('jb_bin_id').value = binId;
@@ -2133,6 +2138,11 @@
     }
     function closeJbModal() {
       document.getElementById('jbModal').classList.remove('open');
+      if (_jbReopenPw) {
+        _jbReopenPw = false;
+        // Re-open the password modal so user can continue setup
+        setTimeout(() => handleLockClick(), 150);
+      }
     }
     async function testJbConnection() {
       const apiKeyInput = document.getElementById('jb_api_key').value.trim();
@@ -2621,7 +2631,7 @@
     // Only the device that set up JSONBin (local) can write the verify token.
     // All other devices read it from JSONBin and verify against it.
 
-    const SETUP_SECRET_HASH = 'da46ad5791ad4a6e30d8ed2cba83d8f1535006341be068f777e137b112554f18';
+    const SETUP_SECRET_HASH = ''; // Paste your SHA-256 hash here — see README for instructions
 
     async function sha256(message) {
       const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(message));
@@ -2771,6 +2781,12 @@
       }
     }
 
+    function openJbFromPwModal() {
+      // Close pw modal, open JSONBin config, then re-open pw modal when done
+      document.getElementById('pwModal').classList.remove('open');
+      openJbModal(true); // pass flag to re-open pw modal after saving
+    }
+
     async function handleLockClick() { if (adminMode) lockAdmin(); else await openPwModal(); }
 
     async function openPwModal() {
@@ -2798,6 +2814,8 @@
         document.getElementById('pwSetupNote').style.display = 'block';
         document.getElementById('pwSubmitBtn').style.display = '';
         document.getElementById('pwSubmitBtn').textContent = 'Set Password';
+        // Always show JSONBin config button during first-time setup
+        document.getElementById('pwJbSetupBtn').style.display = '';
       } else if (setupMode && remoteToken) {
         // Setup secret correct but token already exists — offer unlock OR reset
         document.getElementById('pwModalTitle').textContent = 'Admin Access';
@@ -2836,6 +2854,7 @@
         closePwModal(); await enterAdminMode();
       } else if (result === 'jb_error') {
         document.getElementById('pwError').textContent = 'JSONBIN NOT CONFIGURED — SET UP JSONBIN FIRST';
+        document.getElementById('pwJbSetupBtn').style.display = '';
       } else if (result === 'not_configured') {
         document.getElementById('pwError').textContent = 'ADMIN NOT CONFIGURED';
         document.getElementById('pwSubmitBtn').style.display = 'none';
